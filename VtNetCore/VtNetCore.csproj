@@ -1,7 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="15.0">
   <PropertyGroup>
-    <TargetFrameworks>netstandard1.3;netstandard2.0</TargetFrameworks>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <!-- Vendored into Jumbee.Console (a net10 lib): target net10 directly so it AOT-publishes cleanly. (As a
+         netstandard2.0 project ref, a flowed-in -p:PublishAot=true would error NETSDK1207.) We don't pack the lib. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- Pre-nullable code: don't subject the vendored source to the repo's nullable analysis. -->
+    <Nullable>disable</Nullable>
     <Authors>Darren R. Starr</Authors>
     <Company>Telenor Inpli AS</Company>
     <Product>VtNet terminal emulation library</Product>
@@ -14,8 +18,5 @@
     <PackageLicenseUrl>https://github.com/darrenstarr/VtNetCore/blob/master/LICENSE</PackageLicenseUrl>
     <PackageTags>VT-100 VT220 xterm NetCore</PackageTags>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="System.Text.Encoding" Version="4.3.0" />
-    <PackageReference Include="System.Text.Encoding.Extensions" Version="4.3.0" />
-  </ItemGroup>
+  <!-- System.Text.Encoding(.Extensions) are intrinsic to netstandard2.0 — the old 4.3.0 package refs are dropped. -->
 </Project>

@@ -584,7 +584,7 @@
                     Hidden = currentAttribute.Hidden,
                     Blink = currentAttribute.Blink,
                     Bold = currentAttribute.Bright,
-                    Italic = false,
+                    Italic = currentAttribute.Standout,   // SGR 3 is parsed as "Standout" here; surface it as italic
                     Underline = currentAttribute.Underscore,
                     Text = ""
                 };
@@ -617,7 +617,7 @@
                                 Hidden = currentAttribute.Hidden,
                                 Blink = currentAttribute.Blink,
                                 Bold = currentAttribute.Bright,
-                                Italic = false,
+                                Italic = currentAttribute.Standout,   // SGR 3 (Standout) → italic
                                 Underline = currentAttribute.Underscore,
                                 Text = ""
                             };
@@ -637,7 +637,7 @@
                             Hidden = NullAttribute.Hidden,
                             Blink = NullAttribute.Blink,
                             Bold = NullAttribute.Bright,
-                            Italic = false,
+                            Italic = NullAttribute.Standout,   // SGR 3 (Standout) → italic
                             Underline = NullAttribute.Underscore,
                             Text = string.Empty.PadRight(lineWidth - x, ' ')
                         };
