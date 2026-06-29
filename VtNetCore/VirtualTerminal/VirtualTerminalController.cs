@@ -1234,6 +1234,25 @@
             }
         }
 
+        // Trim scrollback toward the history cap. Removing the oldest line one-at-a-time on every scroll
+        // (Buffer.RemoveAt(0)) is O(n) per line — under a flood (e.g. `yes`) that becomes O(n²).
+        // Instead let history overshoot the cap by a slack, then bulk-remove with RemoveRange, amortizing the
+        // shift cost to ~O(1) per line. Buffer stays a List, so Buffer[i] indexing elsewhere is unchanged; TopRow
+        // can transiently exceed MaximumHistoryLines by up to the slack, which the renderer tolerates.
+        private const int HistoryTrimSlack = 512;
+        private void TrimHistory()
+        {
+            if (TopRow <= MaximumHistoryLines + HistoryTrimSlack)
+                return;
+
+            var remove = TopRow - MaximumHistoryLines;
+            if (remove > Buffer.Count)
+                remove = Buffer.Count;
+
+            Buffer.RemoveRange(0, remove);
+            TopRow -= remove;
+        }
+
         public void NewLine()
         {
             LogExtreme("NewLine()");
@@ -1272,15 +1291,11 @@
 
                 if (ScrollBottom == -1 && CursorState.CurrentRow >= VisibleRows)
                 {
-                    LogController("Scroll all (before:" + TopRow.ToString() + ",after:" + (TopRow + 1).ToString() + ")");
+                    if (Debugging) LogController("Scroll all (before:" + TopRow.ToString() + ",after:" + (TopRow + 1).ToString() + ")");
                     TopRow++;
                     CursorState.CurrentRow--;
 
-                    while (TopRow > MaximumHistoryLines)
-                    {
-                        Buffer.RemoveAt(0);
-                        TopRow--;
-                    }
+                    TrimHistory();
                 }
                 else if (ScrollBottom >= 0 && CursorState.CurrentRow == ScrollBottom + 1)
                 {
@@ -1535,7 +1550,9 @@
 
         public void PutChar(char character)
         {
-            LogExtreme("PutChar(ch:'" + character + "'=" + ((int)character).ToString() + ")");
+            // Guard the per-character log: building the message string is eager (it runs even when Debugging is off),
+            // and PutChar is THE hot path, so the unconditional string concat dominated flood throughput.
+            if (Debugging) LogExtreme("PutChar(ch:'" + character + "'=" + ((int)character).ToString() + ")");
 
             if (!CursorState.Utf8 && IsRGrCharacter(character))
                 character = Iso2022Encoding.DecodeChar((char)(character - (char)0x80), RightCharacterSet, CursorState.NationalCharacterReplacementMode);

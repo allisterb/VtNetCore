@@ -1679,16 +1679,18 @@
             },
         };
 
+        // Cached handler for the CharacterSequence hot path (resolved once; never changes).
+        private static SequenceHandler _characterHandler;
+
         public static void ProcessSequence(TerminalSequence sequence, IVirtualTerminalController controller)
         {
             if(sequence is CharacterSequence)
-            {
-                var handler = Handlers.Where(x => x.SequenceType == SequenceHandler.ESequenceType.Character).SingleOrDefault();
-                if (handler == null)
-                    throw new Exception("There are no sequence handlers configured for type CharacterSequence");
+            {               
+                _characterHandler ??=
+                    Handlers.Where(x => x.SequenceType == SequenceHandler.ESequenceType.Character).SingleOrDefault()
+                    ?? throw new Exception("There are no sequence handlers configured for type CharacterSequence");
 
-                handler.Handler(sequence, controller);
-
+                _characterHandler.Handler(sequence, controller);
                 return;
             }
 
