@@ -623,8 +623,26 @@
             return null;
         }
 
+        // Reused for the single-byte-character hot path so a flood (e.g. `yes`) doesn't allocate a sequence object
+        // per glyph. Safe because the returned sequence is consumed synchronously by ProcessSequence and never
+        // retained or queued. [ThreadStatic] keeps it correct if two terminals ever parse on different threads.
+        [ThreadStatic] private static CharacterSequence _reusableCharacter;
+
         public static TerminalSequence ConsumeNextSequence(XTermInputBuffer stream, bool utf8)
         {
+            // Hot path: a single byte in 0x00-0x7F (other than ESC) is a plain glyph or C0 control. It can never
+            // straddle a buffer boundary, so it needs none of the PushState/Commit rollback bookkeeping the escape
+            // consumers below rely on. (SS2/SS3/DCS introducers are 0x8E/0x8F/0x90 — all >= 0x80 — so the < 0x80
+            // test already excludes them.) This skips two list operations and a sequence allocation per character.
+            var firstByte = stream.PeekAhead(0);
+            if (firstByte < 0x80 && firstByte != 0x1b)
+            {
+                stream.Position++;
+                var reused = _reusableCharacter ??= new CharacterSequence();
+                reused.Character = (char)firstByte;
+                return reused;
+            }
+
             stream.PushState();
             var next = stream.Read(utf8);
 

@@ -40,10 +40,20 @@
 
         public void Add(byte [] data)
         {
-            if (Buffer == null)
+            // Hot path under a flood (e.g. `yes`): after a fully-drained Push, Flush leaves Buffer empty, so the
+            // next Add just adopts the incoming chunk with no copy. Only when an unparsed tail remains (a sequence
+            // split across pushes) do we concatenate — and then with BlockCopy instead of LINQ Concat/ToArray.
+            if (Buffer == null || Buffer.Length == 0)
+            {
                 Buffer = data;
+            }
             else
-                Buffer = Buffer.Concat(data).ToArray();
+            {
+                var combined = new byte[Buffer.Length + data.Length];
+                System.Buffer.BlockCopy(Buffer, 0, combined, 0, Buffer.Length);
+                System.Buffer.BlockCopy(data, 0, combined, Buffer.Length, data.Length);
+                Buffer = combined;
+            }
         }
 
         public void PushState()
@@ -107,7 +117,19 @@
             if (StateStack.Count > 0)
                 throw new Exception("The buffer should not be flushed when it is holding a state");
 
-            Buffer = Buffer.Skip(Position).ToArray();
+            // Fully consumed (the common case): drop to a zero-length buffer with no allocation. The public
+            // contract (asserted by OCSBug: Buffer.Length == 0, Position == 0) is preserved.
+            if (Buffer == null || Position >= Buffer.Length)
+            {
+                Buffer = Array.Empty<byte>();
+                Position = 0;
+                return;
+            }
+
+            var remaining = Buffer.Length - Position;
+            var tail = new byte[remaining];
+            System.Buffer.BlockCopy(Buffer, Position, tail, 0, remaining);
+            Buffer = tail;
             Position = 0;
         }
 
