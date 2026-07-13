@@ -72,6 +72,29 @@ public class OCSBug
     }
    
     [Fact]
+    public void OscTerminatedBy7BitStRendersFollowingText()
+    {
+        // Regression: an OSC terminated by the 7-bit String Terminator (ESC '\') — as emitted by dotnet / MSBuild
+        // Terminal Logger, tmux, and others — was not recognized (only BEL and the 8-bit ST were), so the OSC greedily
+        // consumed the rest of the stream and nothing after it rendered (blank screen).
+        var controller = new VirtualTerminalController();
+        var d = new TransparentDataConsumer(controller);
+        controller.ResizeView(40, 5);
+
+        // OSC 8 hyperlink ( ESC ] 8 ; ; <uri> ESC \ ) immediately followed by visible text.
+        Push(d, "\u001b]8;;http://example.com\u001b\\Hello");
+
+        // Fully consumed — not stalled waiting inside an unterminated OSC.
+        Assert.Equal(0, d.GetInputBuffer().Remaining);
+        Assert.Equal(0, d.GetInputBuffer().Buffer.Length);
+
+        var rows = controller.ViewPort.GetPageSpans(controller.ViewPort.TopRow, 5);
+        var line0 = new StringBuilder();
+        foreach (var span in rows[0].Spans) line0.Append(span.Text);
+        Assert.Equal("Hello", line0.ToString().TrimEnd());
+    }
+
+    [Fact]
     public void TmuxStartingUpTest()
     {   
 

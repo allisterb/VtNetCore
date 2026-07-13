@@ -55,8 +55,13 @@
                     else
                         currentParameter = (currentParameter * 10) + Convert.ToInt32(next - '0');
                 }
-                else if (next == '$' || next == '"' || next == ' ' || next == '\'')
+                else if (next >= ' ' && next <= '/')
                 {
+                    // CSI intermediate byte (0x20-0x2F: space ! " # $ % & ' ( ) * + , - . /). Only $ " ' and space
+                    // were recognized before, so a CSI with any other intermediate — e.g. vim's `CSI 0 % m` — parsed
+                    // the intermediate as the FINAL byte and leaked the real final byte (the 'm') as literal text.
+                    // ('!' at the start is still taken as the DECSTR bang above; digits/';'/private-prefix are handled
+                    // in the branches before this one.)
                     if (modifier.HasValue)
                         throw new EscapeSequenceException("There appears to be two modifiers in a row", stream.Stacked);
 
@@ -129,6 +134,37 @@
             while (true)
             {
                 var next = stream.Read();
+
+                // An ESC ends the OSC. Two cases:
+                //  * ESC '\' — the 7-bit String Terminator, exactly like BEL (0x07) or the 8-bit ST (0x9C). Modern
+                //    emitters (dotnet / MSBuild Terminal Logger, and many others) terminate OSC title / progress
+                //    (9;4) / hyperlink (8) sequences this way; VtNetCore previously only recognized BEL / 8-bit ST, so
+                //    such an OSC greedily consumed the rest of the stream. Consume both bytes.
+                //  * a BARE ESC (not followed by '\') — the start of the NEXT escape sequence, which implicitly
+                //    aborts/terminates the OSC (real programs do this, e.g. vim's back-to-back `ESC]10;? ESC]11;?`
+                //    colour queries). The OSC content collected so far is complete, so return it — but leave the ESC
+                //    in the stream so it is parsed as the next sequence (an earlier version threw here, desyncing the
+                //    parser and leaking the aborted sequence's bytes as text).
+                if (next == 0x1B) // ESC
+                {
+                    if (stream.PeekAhead(0) == '\\')   // throws when the byte after ESC hasn't arrived yet -> re-stack
+                        stream.Read();                  // ESC '\': consume the '\'
+                    else
+                        stream.Position--;              // bare ESC: un-consume it so it begins the next sequence
+
+                    if (currentParameter != -1)
+                        Parameters.Add(currentParameter);
+                    var oscSt = new OscSequence
+                    {
+                        Parameters = Parameters,
+                        IsQuery = isQuery,
+                        IsSend = isSend,
+                        IsBang = isBang,
+                        Command = command
+                    };
+                    stream.Commit();
+                    return oscSt;
+                }
 
                 if (readingCommand || next == 0x07 || next == 0x9C) // BEL or ST
                 {
